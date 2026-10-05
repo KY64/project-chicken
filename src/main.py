@@ -40,14 +40,18 @@ def load_site_config(csv_path: str) -> List[Tuple[str, str, str]]:
     return sites
 
 
-def process_site(url: str, branch_name: str, state_csv: str) -> None:
+def process_site(url: str, branch_name: str, state_csv: str) -> List[str]:
     """
     Process a single site: scrape articles and publish new ones.
-    
+
     Args:
         url: Site URL to scrape
         branch_name: Orphan branch name for this site
         state_csv: Path to CSV file tracking seen URLs
+
+    Returns:
+        URLs of newly published articles, to be persisted by the caller
+        once the run is back on the main branch
     """
     print(f"Processing site: {url}")
     
@@ -89,13 +93,11 @@ def process_site(url: str, branch_name: str, state_csv: str) -> None:
         push_branch(branch_name)
         
         new_urls.append(article_url)
-    
-    # Update state
-    if new_urls:
-        print(f"  Updating state with {len(new_urls)} new URLs")
-        save_new_urls(state_csv, new_urls)
-    else:
-        print(f"  No new articles to track")
+
+    # The state file is tracked on main and must not be written here: the
+    # run is currently on the orphan branch, where the file would be
+    # untracked and lost when switching back
+    return new_urls
 
 
 def main() -> None:
@@ -112,20 +114,28 @@ def main() -> None:
     print(f"Loaded {len(sites)} sites to monitor")
     
     # Process each site
+    new_urls_by_state_csv = {}
     for url, branch_name, state_csv in sites:
         try:
-            process_site(url, branch_name, state_csv)
+            new_urls = process_site(url, branch_name, state_csv)
         except Exception as e:
             print(f"Error processing site {url}: {e}")
             continue
-    
+        if new_urls:
+            new_urls_by_state_csv.setdefault(state_csv, []).extend(new_urls)
+
     # Switch back to main
     print("Switching back to main branch")
     checkout_main()
-    
+
+    # Update state files now that the run is back on main, where they are tracked
+    for state_csv, new_urls in new_urls_by_state_csv.items():
+        print(f"Updating {state_csv} with {len(new_urls)} new URLs")
+        save_new_urls(state_csv, new_urls)
+
     # Commit and push state changes
     print("Committing and pushing state changes")
-    commit_changes("Update seen URLs")
+    commit_changes("Update seen URLs", list(new_urls_by_state_csv))
     
     # Push to origin if remote exists
     remote_check = subprocess.run(

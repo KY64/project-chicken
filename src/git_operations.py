@@ -1,6 +1,6 @@
 import os
 import subprocess
-from typing import Optional
+from typing import List
 
 
 def configure_git() -> None:
@@ -85,15 +85,33 @@ def checkout_main() -> None:
         subprocess.run(['git', 'pull', 'origin', 'main'], check=True)
 
 
-def commit_changes(message: str) -> None:
+def commit_changes(message: str, paths: List[str]) -> None:
     """
-    Commit current changes with the given message.
-    
+    Commit changes to the given files with the given message.
+
+    Staging and committing are scoped to `paths` so unrelated working-tree
+    files are never swept into the commit. Skips the commit when nothing
+    changed, since committing with a clean index exits non-zero.
+
     Args:
         message: Commit message
+        paths: Files to stage and commit
     """
-    subprocess.run(['git', 'add', '.'], check=True)
-    subprocess.run(['git', 'commit', '-m', message], check=True)
+    if not paths:
+        print("No state changes to commit")
+        return
+
+    subprocess.run(['git', 'add', '--'] + paths, check=True)
+
+    staged = subprocess.run(
+        ['git', 'diff', '--cached', '--quiet', '--'] + paths,
+        check=False
+    )
+    if staged.returncode == 0:
+        print("No state changes to commit")
+        return
+
+    subprocess.run(['git', 'commit', '-m', message, '--'] + paths, check=True)
 
 
 def create_empty_commit(title: str, url: str) -> None:
