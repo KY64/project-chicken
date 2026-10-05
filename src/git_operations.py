@@ -19,38 +19,67 @@ def checkout_orphan_branch(branch_name: str) -> None:
     Args:
         branch_name: Name of the orphan branch to checkout/create
     """
-    # Check if branch exists remotely
-    result = subprocess.run(
-        ['git', 'ls-remote', '--heads', 'origin', branch_name],
+    # Check if branch exists locally
+    local_check = subprocess.run(
+        ['git', 'branch', '--list', branch_name],
         capture_output=True,
         text=True
     )
     
-    if result.returncode == 0:
-        # Branch exists, checkout it
+    if local_check.stdout.strip():
+        # Branch exists locally, checkout it
         subprocess.run(['git', 'checkout', branch_name], check=True)
-        subprocess.run(['git', 'pull', 'origin', branch_name], check=True)
+        subprocess.run(['git', 'reset', '--hard', 'HEAD'], check=True)
     else:
-        # Branch doesn't exist, create orphan branch
-        subprocess.run(['git', 'checkout', '--orphan', branch_name], check=True)
-        # Clear the index to make it truly empty (may fail if index is already empty)
-        subprocess.run(['git', 'rm', '-rf', '.'], check=False)
+        # Check if branch exists remotely
+        remote_check = subprocess.run(
+            ['git', 'ls-remote', '--heads', 'origin', branch_name],
+            capture_output=True,
+            text=True
+        )
+        
+        if remote_check.returncode == 0 and remote_check.stdout.strip():
+            # Branch exists remotely, checkout and pull
+            subprocess.run(['git', 'checkout', branch_name], check=True)
+            subprocess.run(['git', 'pull', 'origin', branch_name], check=True)
+        else:
+            # Branch doesn't exist, create orphan branch
+            subprocess.run(['git', 'checkout', '--orphan', branch_name], check=True)
+            # Clear the index to make it truly empty (may fail if index is already empty)
+            subprocess.run(['git', 'rm', '-rf', '.'], check=False)
 
 
 def push_branch(branch_name: str) -> None:
     """
-    Push a branch to origin.
+    Push a branch to origin if remote exists.
     
     Args:
         branch_name: Name of the branch to push
     """
-    subprocess.run(['git', 'push', 'origin', branch_name, '--force'], check=True)
+    # Check if origin exists
+    remote_check = subprocess.run(
+        ['git', 'remote', 'get-url', 'origin'],
+        capture_output=True,
+        text=True
+    )
+    
+    if remote_check.returncode == 0:
+        subprocess.run(['git', 'push', 'origin', branch_name, '--force'], check=True)
 
 
 def checkout_main() -> None:
     """Checkout the main branch."""
     subprocess.run(['git', 'checkout', 'main'], check=True)
-    subprocess.run(['git', 'pull', 'origin', 'main'], check=True)
+    
+    # Only pull if origin exists
+    remote_check = subprocess.run(
+        ['git', 'remote', 'get-url', 'origin'],
+        capture_output=True,
+        text=True
+    )
+    
+    if remote_check.returncode == 0:
+        subprocess.run(['git', 'pull', 'origin', 'main'], check=True)
 
 
 def commit_changes(message: str) -> None:

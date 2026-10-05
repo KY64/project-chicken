@@ -41,6 +41,5 @@ Thumbs.db
 .env
 .env.local
 
-# State files (optional - comment out if you want to track state)
-*.csv
-!site.csv
+# State files (generated during runtime)
+cert-pl.csv

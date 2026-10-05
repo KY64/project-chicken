@@ -125,8 +125,15 @@ def main() -> None:
     print("Committing and pushing state changes")
     commit_changes("Update seen URLs")
     
-    # Push to origin
-    subprocess.run(['git', 'push', 'origin', 'main'], check=True)
+    # Push to origin if remote exists
+    remote_check = subprocess.run(
+        ['git', 'remote', 'get-url', 'origin'],
+        capture_output=True,
+        text=True
+    )
+    
+    if remote_check.returncode == 0:
+        subprocess.run(['git', 'push', 'origin', 'main'], check=True)
     
     print("Done!")
 
