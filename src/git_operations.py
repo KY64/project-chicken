@@ -1,21 +1,42 @@
 import os
 import subprocess
-from typing import List
+import sys
+from typing import List, Literal
 
 
 def configure_git() -> None:
     """Configure git with user name and email."""
     user_name = os.getenv('GIT_USER_NAME', 'github-actions[bot]')
     user_email = os.getenv('GIT_USER_EMAIL', '41898282+github-actions[bot]@users.noreply.github.com')
-    
+
     subprocess.run(['git', 'config', 'user.name', user_name], check=True)
     subprocess.run(['git', 'config', 'user.email', user_email], check=True)
+
+
+def get_app_env() -> Literal['develop', 'production']:
+    """
+    Read and validate APP_ENV.
+
+    Must be explicitly set to 'develop' or 'production'.
+    Exits with an error if unset or invalid.
+    """
+    env = os.getenv('APP_ENV')
+    if env is None:
+        sys.exit("Error: APP_ENV must be set to 'develop' or 'production'")
+    if env not in ('develop', 'production'):
+        sys.exit(f"Error: APP_ENV must be 'develop' or 'production', got {env!r}")
+    return env
+
+
+def pushes_enabled() -> bool:
+    """Return True only when APP_ENV=production."""
+    return get_app_env() == 'production'
 
 
 def checkout_orphan_branch(branch_name: str) -> None:
     """
     Checkout an existing orphan branch or create a new one.
-    
+
     Args:
         branch_name: Name of the orphan branch to checkout/create
     """
@@ -25,7 +46,7 @@ def checkout_orphan_branch(branch_name: str) -> None:
         capture_output=True,
         text=True
     )
-    
+
     if local_check.stdout.strip():
         # Branch exists locally, checkout it
         subprocess.run(['git', 'checkout', branch_name], check=True)
@@ -37,7 +58,7 @@ def checkout_orphan_branch(branch_name: str) -> None:
             capture_output=True,
             text=True
         )
-        
+
         if remote_check.returncode == 0 and remote_check.stdout.strip():
             # Branch exists remotely, checkout and pull
             subprocess.run(['git', 'checkout', branch_name], check=True)
@@ -51,18 +72,21 @@ def checkout_orphan_branch(branch_name: str) -> None:
 
 def push_branch(branch_name: str) -> None:
     """
-    Push a branch to origin if remote exists.
-    
+    Push a branch to origin if remote exists and APP_ENV=production.
+
     Args:
         branch_name: Name of the branch to push
     """
+    if not pushes_enabled():
+        return
+
     # Check if origin exists
     remote_check = subprocess.run(
         ['git', 'remote', 'get-url', 'origin'],
         capture_output=True,
         text=True
     )
-    
+
     if remote_check.returncode == 0:
         subprocess.run(['git', 'push', 'origin', branch_name, '--force'], check=True)
 
@@ -73,14 +97,14 @@ def checkout_main() -> None:
     # files that could conflict with the switch. Do not re-add a git clean
     # here: it would delete unrelated untracked files such as .env
     subprocess.run(['git', 'checkout', 'main'], check=True)
-    
+
     # Only pull if origin exists
     remote_check = subprocess.run(
         ['git', 'remote', 'get-url', 'origin'],
         capture_output=True,
         text=True
     )
-    
+
     if remote_check.returncode == 0:
         subprocess.run(['git', 'pull', 'origin', 'main'], check=True)
 
@@ -117,7 +141,7 @@ def commit_changes(message: str, paths: List[str]) -> None:
 def create_empty_commit(title: str, url: str) -> None:
     """
     Create an empty commit with title as header and URL as body.
-    
+
     Args:
         title: Article title (commit header)
         url: Article URL (commit body)

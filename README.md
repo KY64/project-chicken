@@ -11,7 +11,7 @@ The system monitors websites for new articles and publishes them as empty commit
 - **State Management:** CSV files track seen URLs; `site.csv` on `main` branch defines sites
 - **RSS Generation:** Leverages GitHub's native Atom feeds from orphan branches
 - **Feed Items:** New articles published as empty commits (header = title, body = URL)
-- **Scraping:** Uses Playwright CDP API in production; fallback to local Chromium for local testing
+- **Scraping:** Per-site access mode selects browser (JS enabled), browser (JS disabled), or direct `aiohttp`; browser modes use Browserless CDP in production and local Chromium for testing
 - **Error Handling:** Retry with exponential backoff on failures
 - **Initial Run:** Publishes first 3 pages of articles max (to avoid flooding feed)
 
@@ -52,14 +52,19 @@ project-chicken/
    playwright install chromium
    ```
 
-2. Run locally (without CDP endpoint):
+2. Run in develop mode (commits locally, no push):
    ```bash
-   python src/main.py
+   APP_ENV=develop python src/main.py
    ```
 
-3. Run with CDP endpoint:
+3. Run in production mode (commits and pushes):
    ```bash
-   PLAYWRIGHT_CDP_ENDPOINT=your_endpoint python src/main.py
+   APP_ENV=production python src/main.py
+   ```
+
+4. Run with CDP endpoint:
+   ```bash
+   APP_ENV=production PLAYWRIGHT_CDP_ENDPOINT=your_endpoint python src/main.py
    ```
 
 ## Configuration
@@ -68,13 +73,18 @@ project-chicken/
 
 Edit `site.csv` and add a new line:
 ```
-https://example.com/news/,site-example-com,state/example-com.csv
+https://example.com/news/,site-example-com,state/example-com.csv,browser
 ```
 
 The CSV format is:
 - Column 1: Site URL
 - Column 2: Orphan branch name (domain-based naming recommended)
 - Column 3: State CSV path, relative to the repository root (store per-site files under `state/`; domain-based naming recommended)
+- Column 4: Access mode: `browser`, `browser_no_js`, or `aiohttp`
+
+Browser modes use Browserless CDP when `PLAYWRIGHT_CDP_ENDPOINT` is set,
+and local headless Chromium otherwise. The selected access mode is
+independent of which browser backend is used.
 
 ### Adding a New Scraper
 
@@ -94,10 +104,10 @@ The CSV format is:
    - For each new article:
      - Checkout/create orphan branch
      - Create empty commit with title and URL
-     - Push branch to origin
+     - Push branch to origin (production only)
    - Update state CSV with new URLs
 3. Switch back to main branch
-4. Commit and push updated state CSV files
+4. Commit and push updated state CSV files (production only)
 
 ## RSS Feed Access
 
@@ -113,6 +123,9 @@ https://github.com/USERNAME/REPO/commits/site-cert-pl.atom
 
 ## Environment Variables
 
+- `APP_ENV`: Environment mode, must be `develop` or `production` (required)
+  - `develop`: commits locally only, does not push to origin
+  - `production`: commits and pushes to origin
 - `PLAYWRIGHT_CDP_ENDPOINT`: Playwright CDP endpoint URL (required for production, optional for local testing)
 - `GIT_USER_NAME`: Git user name (optional, defaults to github-actions[bot])
 - `GIT_USER_EMAIL`: Git user email (optional, defaults to github-actions[bot] email)
@@ -126,3 +139,4 @@ https://github.com/USERNAME/REPO/commits/site-cert-pl.atom
 5. **Git Configuration:** Use GitHub Actions bot identity by default; custom identity optional via env vars
 6. **State CSV Naming:** Simple domain-based naming under `state/` (e.g., `state/cert-pl.csv` for seen URLs)
 7. **Browser Installation:** GitHub Actions uses CDP endpoint (no local Chromium); local testing requires `playwright install chromium`
+8. **Environment Modes:** `APP_ENV` gates push behavior; fail-fast if unset to prevent accidental publishes

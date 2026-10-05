@@ -34,5 +34,6 @@ jobs:
 
       - name: Run monitor
         env:
+          APP_ENV: production
           PLAYWRIGHT_CDP_ENDPOINT: ${{ secrets.PLAYWRIGHT_CDP_ENDPOINT }}
         run: python src/main.py
