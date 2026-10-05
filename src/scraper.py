@@ -14,10 +14,11 @@ BASE_DELAY = 2  # seconds
 class BaseScraper(ABC):
     """Abstract base class for website scrapers."""
     
+    NEXT_PAGE_SELECTOR = 'a:has-text("»")'
+    
     def __init__(self, base_url: str):
         self.base_url = base_url
         self.cdp_endpoint = os.getenv('PLAYWRIGHT_CDP_ENDPOINT')
-        self.use_cdp = bool(self.cdp_endpoint)
     
     @abstractmethod
     def extract_articles(self, page: Page) -> List[Tuple[str, str]]:
@@ -46,13 +47,23 @@ class BaseScraper(ABC):
             try:
                 return self._scrape_articles_internal(max_pages)
             except Exception as e:
-                if attempt == MAX_RETRIES - 1:
+                if attempt < MAX_RETRIES - 1:
+                    delay = BASE_DELAY * (2 ** attempt)
+                    print(f"Scraping failed (attempt {attempt + 1}/{MAX_RETRIES}), retrying in {delay}s: {e}")
+                    time.sleep(delay)
+                else:
                     raise
-                delay = BASE_DELAY * (2 ** attempt)
-                print(f"Scraping failed (attempt {attempt + 1}/{MAX_RETRIES}), retrying in {delay}s: {e}")
-                time.sleep(delay)
-        
-        return []
+    
+    def _get_browser_and_page(self, playwright):
+        """Get browser and page objects, either from CDP or local."""
+        if self.cdp_endpoint:
+            browser = playwright.chromium.connect_over_cdp(self.cdp_endpoint)
+            context = browser.contexts[0] if browser.contexts else browser.new_context()
+        else:
+            browser = playwright.chromium.launch(headless=True)
+            context = browser.new_context()
+        page = context.new_page()
+        return browser, page
     
     def _scrape_articles_internal(self, max_pages: Optional[int] = None) -> List[Tuple[str, str]]:
         """Internal scraping method without retry logic."""
@@ -60,24 +71,13 @@ class BaseScraper(ABC):
         page_num = 1
         
         with sync_playwright() as p:
-            if self.use_cdp:
-                # Connect to CDP endpoint
-                browser = p.chromium.connect_over_cdp(self.cdp_endpoint)
-                context = browser.contexts[0] if browser.contexts else browser.new_context()
-                page = context.new_page()
-            else:
-                # Use local browser
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context()
-                page = context.new_page()
+            browser, page = self._get_browser_and_page(p)
             
             try:
                 while True:
                     # Navigate to the page
-                    if page_num == 1:
-                        page.goto(self.base_url)
-                    else:
-                        page.goto(f"{self.base_url}{page_num}/")
+                    page_url = self.base_url if page_num == 1 else urljoin(self.base_url, f"{page_num}/")
+                    page.goto(page_url)
                     
                     # Wait for page to load
                     page.wait_for_load_state('networkidle')
@@ -91,7 +91,7 @@ class BaseScraper(ABC):
                         break
                     
                     # Check if there's a next page
-                    next_button = page.query_selector('a:has-text("»")')
+                    next_button = page.query_selector(self.NEXT_PAGE_SELECTOR)
                     if not next_button:
                         break
                     

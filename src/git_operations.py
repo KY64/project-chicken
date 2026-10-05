@@ -5,16 +5,11 @@ from typing import Optional
 
 def configure_git() -> None:
     """Configure git with user name and email."""
-    user_name = os.getenv('GIT_USER_NAME')
-    user_email = os.getenv('GIT_USER_EMAIL')
+    user_name = os.getenv('GIT_USER_NAME', 'github-actions[bot]')
+    user_email = os.getenv('GIT_USER_EMAIL', '41898282+github-actions[bot]@users.noreply.github.com')
     
-    if user_name and user_email:
-        subprocess.run(['git', 'config', 'user.name', user_name], check=True)
-        subprocess.run(['git', 'config', 'user.email', user_email], check=True)
-    else:
-        # Use GitHub Actions bot identity as default
-        subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
-        subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+    subprocess.run(['git', 'config', 'user.name', user_name], check=True)
+    subprocess.run(['git', 'config', 'user.email', user_email], check=True)
 
 
 def checkout_orphan_branch(branch_name: str) -> None:
@@ -31,14 +26,14 @@ def checkout_orphan_branch(branch_name: str) -> None:
         text=True
     )
     
-    if result.returncode == 0 and result.stdout.strip():
+    if result.returncode == 0:
         # Branch exists, checkout it
         subprocess.run(['git', 'checkout', branch_name], check=True)
         subprocess.run(['git', 'pull', 'origin', branch_name], check=True)
     else:
         # Branch doesn't exist, create orphan branch
         subprocess.run(['git', 'checkout', '--orphan', branch_name], check=True)
-        # Clear the index to make it truly empty
+        # Clear the index to make it truly empty (may fail if index is already empty)
         subprocess.run(['git', 'rm', '-rf', '.'], check=False)
 
 

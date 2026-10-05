@@ -30,9 +30,12 @@ def load_site_config(csv_path: str) -> List[Tuple[str, str, str]]:
     sites = []
     with open(csv_path, 'r', newline='') as f:
         reader = csv.reader(f)
-        for row in reader:
-            if len(row) >= 3:
-                sites.append((row[0], row[1], row[2]))
+        for columns in reader:
+            try:
+                url, branch_name, state_csv = columns
+                sites.append((url, branch_name, state_csv))
+            except ValueError:
+                continue
     
     return sites
 
@@ -101,8 +104,7 @@ def main() -> None:
     # Load site configuration
     site_csv = 'site.csv'
     if not os.path.exists(site_csv):
-        print(f"Error: {site_csv} not found")
-        sys.exit(1)
+        sys.exit(f"Error: {site_csv} not found")
     
     sites = load_site_config(site_csv)
     print(f"Loaded {len(sites)} sites to monitor")

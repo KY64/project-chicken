@@ -20,8 +20,9 @@ def load_seen_urls(csv_path: str) -> Set[str]:
     with open(csv_path, 'r', newline='') as f:
         reader = csv.reader(f)
         for row in reader:
-            if row:  # Skip empty rows
-                seen_urls.add(row[0])
+            if not row:
+                continue  # Skip empty rows
+            seen_urls.add(row[0])
     
     return seen_urls
 
@@ -35,7 +36,8 @@ def save_new_urls(csv_path: str, new_urls: List[str]) -> None:
         new_urls: List of new URLs to append
     """
     # Create directory if it doesn't exist
-    os.makedirs(os.path.dirname(csv_path) if os.path.dirname(csv_path) else '.', exist_ok=True)
+    csv_dir = os.path.dirname(csv_path) or '.'
+    os.makedirs(csv_dir, exist_ok=True)
     
     # Append mode - create file if it doesn't exist
     with open(csv_path, 'a', newline='') as f:
