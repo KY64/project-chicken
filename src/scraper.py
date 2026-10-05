@@ -133,7 +133,11 @@ class CertPlScraper(BaseScraper):
                     continue
 
                 title = title_element.inner_text().strip()
-                full_url = urljoin(self.base_url, relative_url)
+                # Resolve against the page's own URL, not base_url: pagination
+                # pages live one directory deeper (/en/news/2/), so joining
+                # against /en/news/ climbs past /en/ and drops the language
+                # prefix from every article URL.
+                full_url = urljoin(page.url, relative_url)
 
                 articles.append((title, full_url))
             except Exception:
