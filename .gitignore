@@ -29,6 +29,7 @@ ENV/
 # IDE
 .vscode/
 .idea/
+.letta/
 *.swp
 *.swo
 *~
