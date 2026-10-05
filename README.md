@@ -28,6 +28,8 @@ project-chicken/
 │   ├── scraper.py         # Scraping logic
 │   ├── git_operations.py  # Git operations
 │   └── state_manager.py   # State management
+├── state/
+│   └── cert-pl.csv        # Seen-URL state for CERT.pl
 ├── site.csv               # Site configuration
 ├── requirements.txt       # Python dependencies
 └── README.md
@@ -66,13 +68,13 @@ project-chicken/
 
 Edit `site.csv` and add a new line:
 ```
-https://example.com/news/,site-example-com,example-com.csv
+https://example.com/news/,site-example-com,state/example-com.csv
 ```
 
 The CSV format is:
 - Column 1: Site URL
 - Column 2: Orphan branch name (domain-based naming recommended)
-- Column 3: State CSV file name (domain-based naming recommended)
+- Column 3: State CSV path, relative to the repository root (store per-site files under `state/`; domain-based naming recommended)
 
 ### Adding a New Scraper
 
@@ -122,5 +124,5 @@ https://github.com/USERNAME/REPO/commits/site-cert-pl.atom
 3. **Initial Run Behavior:** Publish first 3 pages of articles max (to avoid flooding feed)
 4. **Branch Naming:** Domain-based (e.g., `site-cert-pl` from URL)
 5. **Git Configuration:** Use GitHub Actions bot identity by default; custom identity optional via env vars
-6. **CSV Naming:** Simple domain-based naming (e.g., `cert-pl.csv` for seen URLs)
+6. **State CSV Naming:** Simple domain-based naming under `state/` (e.g., `state/cert-pl.csv` for seen URLs)
 7. **Browser Installation:** GitHub Actions uses CDP endpoint (no local Chromium); local testing requires `playwright install chromium`

@@ -40,6 +40,3 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
-
-# State files (generated during runtime)
-cert-pl.csv
