@@ -69,6 +69,9 @@ def push_branch(branch_name: str) -> None:
 
 def checkout_main() -> None:
     """Checkout the main branch."""
+    # Clean up untracked state files that might conflict
+    subprocess.run(['git', 'clean', '-fd'], check=False)
+    
     subprocess.run(['git', 'checkout', 'main'], check=True)
     
     # Only pull if origin exists
