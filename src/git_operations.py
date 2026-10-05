@@ -69,9 +69,9 @@ def push_branch(branch_name: str) -> None:
 
 def checkout_main() -> None:
     """Checkout the main branch."""
-    # Clean up untracked state files that might conflict
-    subprocess.run(['git', 'clean', '-fd'], check=False)
-    
+    # Nothing is written while on orphan branches, so there are no untracked
+    # files that could conflict with the switch. Do not re-add a git clean
+    # here: it would delete unrelated untracked files such as .env
     subprocess.run(['git', 'checkout', 'main'], check=True)
     
     # Only pull if origin exists
