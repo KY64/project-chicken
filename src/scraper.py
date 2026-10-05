@@ -118,36 +118,28 @@ class CertPlScraper(BaseScraper):
             List of (title, url) tuples
         """
         articles = []
-        
-        # Find all article cards
-        article_elements = page.query_selector_all('div:has(h4)')
-        
-        for element in article_elements:
+
+        # Each article card is one anchor that wraps its h4 title, so select
+        # the anchors directly. A container query like div:has(h4) matches the
+        # page-level wrappers around the whole list, which yields only the
+        # first article (and yields it once per nested wrapper).
+        card_links = page.query_selector_all('ul.horizontal-post-list a.post-outer-container')
+
+        for card in card_links:
             try:
-                # Get the title from the h4 element
-                title_element = element.query_selector('h4')
-                if not title_element:
+                title_element = card.query_selector('h4')
+                relative_url = card.get_attribute('href')
+                if not title_element or not relative_url:
                     continue
-                
+
                 title = title_element.inner_text().strip()
-                
-                # Get the "Read more" link
-                link_element = element.query_selector('a:has-text("Read more")')
-                if not link_element:
-                    continue
-                
-                relative_url = link_element.get_attribute('href')
-                if not relative_url:
-                    continue
-                
-                # Construct full URL
                 full_url = urljoin(self.base_url, relative_url)
-                
+
                 articles.append((title, full_url))
-            except Exception as e:
+            except Exception:
                 # Skip this article if extraction fails
                 continue
-        
+
         return articles
 
 

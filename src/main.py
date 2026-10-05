@@ -64,9 +64,11 @@ def process_site(url: str, branch_name: str, state_csv: str) -> None:
     
     print(f"  Scraping articles (max_pages={max_pages})")
     
-    # Scrape articles
+    # Scrape articles and dedupe within the batch by URL; a scraper may
+    # yield the same article more than once
     articles = scraper.scrape_articles(max_pages=max_pages)
-    print(f"  Found {len(articles)} articles")
+    articles = list({article_url: (title, article_url) for title, article_url in articles}.values())
+    print(f"  Found {len(articles)} unique articles")
     
     # Filter new articles
     new_articles = [(title, url) for title, url in articles if url not in seen_urls]
