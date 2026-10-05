@@ -78,9 +78,11 @@ def process_site(url: str, branch_name: str, state_csv: str) -> List[str]:
     new_articles = [(title, url) for title, url in articles if url not in seen_urls]
     print(f"  Found {len(new_articles)} new articles")
     
-    # Publish new articles
+    # Publish oldest first: pages are scraped newest-first, and each new
+    # commit lands on top of the orphan branch, so reversing the batch leaves
+    # the newest article as the tip the Atom feed serves first
     new_urls = []
-    for title, article_url in new_articles:
+    for title, article_url in reversed(new_articles):
         print(f"    Publishing: {title}")
         
         # Checkout/create orphan branch
