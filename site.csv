@@ -5,3 +5,4 @@ https://research.jfrog.com/post/,site-jfrog-research,state/jfrog-research.csv,ai
 https://www.huntress.com/blog-categories/threat-analysis,site-huntress-threat-analysis,state/huntress-threat-analysis.csv,browser
 https://www.halcyon.ai/ransomware-research/reports,site-halcyon-reports,state/halcyon-reports.csv,aiohttp
 https://www.lasso.security/research,site-lasso-research,state/lasso-research.csv,aiohttp
+https://socket.dev/blog/category/security-news,site-socket-security-news,state/socket-security-news.csv,browser
