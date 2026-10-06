@@ -25,11 +25,16 @@ project-chicken/
 ├── src/
 │   ├── __init__.py
 │   ├── main.py            # Entry point
-│   ├── scraper.py         # Scraping logic
+│   ├── scraper.py         # Shared scraping engine (access modes, retries, pagination)
+│   ├── sites/             # One module per site: title, URL, next-page extraction
+│   │   ├── __init__.py    # Site registry (URL prefix matching)
+│   │   ├── cert_pl.py
+│   │   └── safedep.py
 │   ├── git_operations.py  # Git operations
 │   └── state_manager.py   # State management
 ├── state/
-│   └── cert-pl.csv        # Seen-URL state for CERT.pl
+│   ├── cert-pl.csv            # Seen-URL state for CERT.pl
+│   └── safedep-malware.csv    # Seen-URL state for SafeDep
 ├── site.csv               # Site configuration
 ├── requirements.txt       # Python dependencies
 └── README.md

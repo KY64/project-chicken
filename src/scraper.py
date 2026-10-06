@@ -1,43 +1,54 @@
+"""Shared scraping engine.
+
+Site-specific parsing lives in one module per site under ``sites``; this
+module owns everything shared: access modes, retries, pagination, and
+browser wiring. A site module defines only URL_PREFIXES, WAIT_SELECTOR,
+and ``extract(html, page_url)`` returning (articles, next_page_url).
+"""
+
 import asyncio
 import os
 import time
-from abc import ABC, abstractmethod
-from html.parser import HTMLParser
-from typing import List, Tuple, Optional, Set
-from urllib.parse import urljoin, urlparse
+from typing import List, Optional, Set, Tuple
 
 import aiohttp
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import sync_playwright
 
+import sites
 
 ACCESS_MODES = frozenset({'browser', 'browser_no_js', 'aiohttp'})
-
 
 MAX_RETRIES = 3
 BASE_DELAY = 2  # seconds
 
+# The whole per-site contract; sites/__init__.py validates it at import time.
+SITE_MODULE_ATTRIBUTES = ('URL_PREFIXES', 'WAIT_SELECTOR', 'extract')
 
-class BaseScraper(ABC):
-    """Scrape a site through a configured browser or direct HTTP mode."""
 
-    NEXT_PAGE_SELECTOR = 'a:has-text("»")'
+class SiteScraper:
+    """Scraping engine for one site.
+
+    ``site`` is a module from the ``sites`` package. The engine fetches pages
+    through the configured access mode and follows the next-page URL the site
+    module extracts; it never constructs pagination URLs itself, so "how to go
+    to the next page" stays a per-site concern.
+    """
+
     PAGE_TIMEOUT_SECONDS = 45
 
-    def __init__(self, base_url: str, access_mode: str):
+    def __init__(self, site, base_url: str, access_mode: str):
         if access_mode not in ACCESS_MODES:
             raise ValueError(f"Unsupported access mode: {access_mode!r}")
+        missing = [name for name in SITE_MODULE_ATTRIBUTES if not hasattr(site, name)]
+        if missing:
+            raise ValueError(
+                f"{getattr(site, '__name__', site)!r} is not a site module; "
+                f"missing: {', '.join(missing)}"
+            )
+        self.site = site
         self.base_url = base_url
         self.access_mode = access_mode
         self.cdp_endpoint = os.getenv('PLAYWRIGHT_CDP_ENDPOINT')
-
-    @abstractmethod
-    def extract_articles(self, page: Page) -> List[Tuple[str, str]]:
-        """Extract normalized (title, URL) pairs from a browser page."""
-        raise NotImplementedError
-
-    def extract_articles_from_html(self, html: str, page_url: str) -> Tuple[List[Tuple[str, str]], bool]:
-        """Extract articles and pagination state from a fetched HTML document."""
-        raise NotImplementedError(f"{type(self).__name__} does not support aiohttp mode")
 
     def scrape_articles(
         self,
@@ -90,7 +101,7 @@ class BaseScraper(ABC):
         seen_urls: Optional[Set[str]]
     ) -> List[Tuple[str, str]]:
         articles = []
-        page_num = 1
+        fetched_urls = set()
 
         with sync_playwright() as p:
             browser, context, page = self._get_browser_and_page(p)
@@ -100,14 +111,21 @@ class BaseScraper(ABC):
                     cdp_session = context.new_cdp_session(page)
                     cdp_session.send('Emulation.setScriptExecutionDisabled', {'value': True})
 
-                while True:
-                    page_url = self.base_url if page_num == 1 else urljoin(self.base_url, f"{page_num}/")
+                # Stop on a missing next-page URL or one already fetched, so a
+                # self-referential "next" link cannot loop the run forever.
+                next_page_url = self.base_url
+                while next_page_url and next_page_url not in fetched_urls:
+                    fetched_urls.add(next_page_url)
                     page.goto(
-                        page_url,
+                        next_page_url,
                         wait_until='domcontentloaded',
                         timeout=self.PAGE_TIMEOUT_SECONDS * 1000,
                     )
-                    page_articles = self.extract_articles(page)
+                    page.wait_for_selector(
+                        self.site.WAIT_SELECTOR,
+                        timeout=self.PAGE_TIMEOUT_SECONDS * 1000,
+                    )
+                    page_articles, next_page_url = self.site.extract(page.content(), page.url)
                     articles.extend(page_articles)
 
                     # Pages are newest-first. Once a page overlaps saved state,
@@ -116,13 +134,12 @@ class BaseScraper(ABC):
                     if seen_urls and any(url in seen_urls for _, url in page_articles):
                         break
 
-                    if max_pages is not None and page_num >= max_pages:
-                        break
-                    if not page.query_selector(self.NEXT_PAGE_SELECTOR):
+                    if max_pages is not None and len(fetched_urls) >= max_pages:
                         break
 
-                    page_num += 1
-                    time.sleep(1)
+                    # Pace pages only when another fetch will actually happen.
+                    if next_page_url and next_page_url not in fetched_urls:
+                        time.sleep(1)
             finally:
                 if cdp_session:
                     cdp_session.detach()
@@ -136,18 +153,21 @@ class BaseScraper(ABC):
         seen_urls: Optional[Set[str]]
     ) -> List[Tuple[str, str]]:
         articles = []
-        page_num = 1
+        fetched_urls = set()
         timeout = aiohttp.ClientTimeout(total=self.PAGE_TIMEOUT_SECONDS)
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            while True:
-                page_url = self.base_url if page_num == 1 else urljoin(self.base_url, f"{page_num}/")
-                async with session.get(page_url) as response:
+            # Same loop shape as the browser path: follow the site's next-page
+            # URL, stop on seen URLs / max_pages / a re-visited URL.
+            next_page_url = self.base_url
+            while next_page_url and next_page_url not in fetched_urls:
+                fetched_urls.add(next_page_url)
+                async with session.get(next_page_url) as response:
                     response.raise_for_status()
                     html = await response.text()
                     page_url = str(response.url)
 
-                page_articles, has_next_page = self.extract_articles_from_html(html, page_url)
+                page_articles, next_page_url = self.site.extract(html, page_url)
                 articles.extend(page_articles)
 
                 # Pages are newest-first. Once a page overlaps saved state,
@@ -156,111 +176,20 @@ class BaseScraper(ABC):
                 if seen_urls and any(url in seen_urls for _, url in page_articles):
                     break
 
-                if max_pages is not None and page_num >= max_pages:
-                    break
-                if not has_next_page:
+                if max_pages is not None and len(fetched_urls) >= max_pages:
                     break
 
-                page_num += 1
-                await asyncio.sleep(1)
+                # Pace pages only when another fetch will actually happen.
+                if next_page_url and next_page_url not in fetched_urls:
+                    await asyncio.sleep(1)
 
         return articles
 
 
-class _CertPlHTMLParser(HTMLParser):
-    """Extract CERT.pl article cards and its next-page marker from HTML."""
-
-    def __init__(self, page_url: str):
-        super().__init__(convert_charrefs=True)
-        self.page_url = page_url
-        self.articles: List[Tuple[str, str]] = []
-        self.has_next_page = False
-        self._post_list_depth = 0
-        self._card_href: Optional[str] = None
-        self._title_depth = 0
-        self._title_parts: List[str] = []
-        self._anchor_stack: List[Tuple[bool, List[str]]] = []
-
-    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
-        attributes = dict(attrs)
-        classes = set((attributes.get('class') or '').split())
-
-        if tag == 'ul':
-            if self._post_list_depth or 'horizontal-post-list' in classes:
-                self._post_list_depth += 1
-        elif tag == 'a':
-            is_card = self._post_list_depth > 0 and 'post-outer-container' in classes
-            self._anchor_stack.append((is_card, []))
-            if is_card:
-                self._card_href = attributes.get('href')
-                self._title_parts = []
-        elif tag == 'h4' and self._card_href:
-            self._title_depth += 1
-
-    def handle_data(self, data: str) -> None:
-        if self._anchor_stack:
-            self._anchor_stack[-1][1].append(data)
-        if self._title_depth:
-            self._title_parts.append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag == 'h4' and self._title_depth:
-            self._title_depth -= 1
-        elif tag == 'a' and self._anchor_stack:
-            is_card, anchor_text = self._anchor_stack.pop()
-            if '»' in ''.join(anchor_text):
-                self.has_next_page = True
-            if is_card and self._card_href:
-                title = ' '.join(''.join(self._title_parts).split())
-                if title:
-                    self.articles.append((title, urljoin(self.page_url, self._card_href)))
-                self._card_href = None
-                self._title_parts = []
-                self._title_depth = 0
-        elif tag == 'ul' and self._post_list_depth:
-            self._post_list_depth -= 1
-
-
-class CertPlScraper(BaseScraper):
-    """Scraper for CERT.pl news page."""
-
-    ARTICLE_CARD_SELECTOR = 'ul.horizontal-post-list a.post-outer-container'
-
-    def __init__(self, base_url: str, access_mode: str):
-        super().__init__(base_url, access_mode)
-
-    def extract_articles(self, page: Page) -> List[Tuple[str, str]]:
-        """
-        Extract articles from CERT.pl news page.
-
-        Args:
-            page: Playwright Page object
-
-        Returns:
-            List of (title, url) tuples
-        """
-        # Select card anchors rather than div:has(h4), which matches nested
-        # page-level wrappers and repeats the first article. Waiting for one
-        # also handles JS-rendered pages without waiting for unrelated network
-        # activity to become idle.
-        page.wait_for_selector(self.ARTICLE_CARD_SELECTOR, timeout=self.PAGE_TIMEOUT_SECONDS * 1000)
-        return self.extract_articles_from_html(page.content(), page.url)[0]
-
-    def extract_articles_from_html(self, html: str, page_url: str) -> Tuple[List[Tuple[str, str]], bool]:
-        parser = _CertPlHTMLParser(page_url)
-        parser.feed(html)
-        return parser.articles, parser.has_next_page
-
-
-def get_scraper_for_url(url: str, access_mode: str) -> BaseScraper:
+def get_scraper_for_url(url: str, access_mode: str) -> SiteScraper:
     """Get the site scraper configured for the selected access mode."""
     if access_mode not in ACCESS_MODES:
         allowed = ', '.join(sorted(ACCESS_MODES))
         raise ValueError(f"Unsupported access mode {access_mode!r}; expected one of: {allowed}")
 
-    parsed = urlparse(url)
-    domain = parsed.netloc.lower()
-
-    if 'cert.pl' in domain:
-        return CertPlScraper(url, access_mode)
-    raise ValueError(f"No scraper available for domain: {domain}")
+    return SiteScraper(sites.get_site_for_url(url), url, access_mode)
