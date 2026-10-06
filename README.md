@@ -118,7 +118,25 @@ through this container (scrape, publish commits, persist state).
 
 ### Adding a New Site
 
-Edit `site.csv` and add a new line:
+Adding a site takes two pieces, and when the site's markup later changes,
+only the site module needs editing.
+
+1. Create one module for the site under `src/sites/` (see
+   `src/sites/cert_pl.py` or `src/sites/safedep.py` for examples). It
+   defines the whole site-specific surface — how to get the title, the URL,
+   and go to the next page:
+
+   - `URL_PREFIXES`: tuple of URL prefixes this site handles (the longest
+     matching prefix wins when resolving a URL to a site)
+   - `WAIT_SELECTOR`: CSS selector browser modes wait for before parsing
+   - `extract(html, page_url) -> (articles, next_page_url)`: parse one
+     page into `(title, url)` pairs plus the absolute next-page URL
+     (or `None` at the last page)
+
+   Everything else — access modes, retries, the seen-URL pagination cutoff,
+   CDP wiring — lives in the shared engine (`src/scraper.py`).
+
+2. Add a row to `site.csv`:
 ```
 https://example.com/news/,site-example-com,state/example-com.csv,browser
 ```
@@ -132,12 +150,6 @@ The CSV format is:
 Browser modes use Browserless CDP when `PLAYWRIGHT_CDP_ENDPOINT` is set,
 and local headless Chromium otherwise. The selected access mode is
 independent of which browser backend is used.
-
-### Adding a New Scraper
-
-1. Create a new subclass of `BaseScraper` in `src/scraper.py`
-2. Implement the `extract_articles()` method
-3. Add the scraper to `get_scraper_for_url()` function
 
 ## How It Works
 
