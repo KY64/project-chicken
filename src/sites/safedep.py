@@ -1,8 +1,8 @@
-"""SafeDep.io malware category listing.
+"""SafeDep.io category listings (malware and security).
 
 Article cards are anchors inside an h2 (title is the anchor text; href is
 site-root-relative like /some-post-slug). Pagination is an anchor whose
-text is Next (e.g. href="/category/malware/2"); later pages also carry a
+text is Next (e.g. href="/category/security/2"); later pages also carry a
 Previous link that must be ignored.
 """
 
@@ -10,7 +10,10 @@ from html.parser import HTMLParser
 from typing import List, Optional, Tuple
 from urllib.parse import urljoin
 
-URL_PREFIXES = ('https://safedep.io/category/malware/',)
+URL_PREFIXES = (
+    'https://safedep.io/category/malware/',
+    'https://safedep.io/category/security/',
+)
 WAIT_SELECTOR = 'h2 a'
 
 
