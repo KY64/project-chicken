@@ -28,13 +28,10 @@ project-chicken/
 │   ├── scraper.py         # Shared scraping engine (access modes, retries, pagination)
 │   ├── sites/             # One module per site: title, URL, next-page extraction
 │   │   ├── __init__.py    # Site registry (URL prefix matching)
-│   │   ├── cert_pl.py
-│   │   └── safedep.py
+│   │   └── <site>.py      # Site-specific extraction contract
 │   ├── git_operations.py  # Git operations
 │   └── state_manager.py   # State management
-├── state/
-│   ├── cert-pl.csv            # Seen-URL state for CERT.pl
-│   └── safedep-malware.csv    # Seen-URL state for SafeDep
+├── state/                 # Per-site seen-URL CSV files
 ├── site.csv               # Site configuration
 ├── requirements.txt       # Python dependencies
 └── README.md
@@ -112,7 +109,10 @@ Verified gotchas:
   `host.containers.internal` in the target URL.
 
 Both `browser` and `browser_no_js` modes are verified working end-to-end
-through this container (scrape, publish commits, persist state).
+through this container for sites compatible with plain Chromium. The local
+container does not provide a Stealth route (it returns 404), so Cloudflare-
+protected `browser` feeds should use Browserless Stealth in production by
+setting `PLAYWRIGHT_CDP_ENDPOINT` to `/stealth` or `/chromium/stealth`.
 
 ## Configuration
 
