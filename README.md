@@ -67,6 +67,48 @@ project-chicken/
    APP_ENV=production PLAYWRIGHT_CDP_ENDPOINT=your_endpoint python src/main.py
    ```
 
+### Local Browser via Container (Browserless)
+
+Browser modes can run against a Browserless container instead of a local
+Chromium install. The scraper connects to it through the usual CDP endpoint.
+
+1. Start the container (self-chosen token, no account needed):
+
+   ```bash
+   podman run -d --name browserless \
+     -p 9222:3000 \
+     -e TOKEN=local-chicken-token \
+     -e TIMEOUT=300000 \
+     --shm-size=2g \
+     ghcr.io/browserless/chromium
+   ```
+
+   `docker run` works the same way. `--shm-size=2g` is required (the default
+   64 MB shared memory crashes Chromium under load).
+
+2. Run with the container as the CDP endpoint:
+
+   ```bash
+   APP_ENV=develop \
+     PLAYWRIGHT_CDP_ENDPOINT="ws://127.0.0.1:9222/chromium?token=local-chicken-token" \
+     python src/main.py
+   ```
+
+Verified gotchas:
+
+- Use `127.0.0.1`, not `localhost`: if `localhost` resolves to IPv6 `::1`,
+  podman's user-space networking resets the connection.
+- Do not set `TIMEOUT=-1` (documented as "disable timeout"): this build closes
+  the WebSocket handshake with `408` immediately. Use a large positive
+  millisecond value instead (the scraper's page timeout is 45 s, so anything
+  above that is fine).
+- The container's Chromium cannot reach services on the host's `127.0.0.1`
+  (its localhost is its own). For local test servers use
+  `host.containers.internal` in the target URL.
+
+Both `browser` and `browser_no_js` modes are verified working end-to-end
+through this container (scrape, publish commits, persist state).
+
 ## Configuration
 
 ### Adding a New Site
