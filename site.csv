@@ -1,3 +1,4 @@
 https://cert.pl/en/news/,site-cert-pl,state/cert-pl.csv,aiohttp
 https://safedep.io/category/malware/,site-safedep-malware,state/safedep-malware.csv,aiohttp
 https://safedep.io/category/security/,site-safedep-security,state/safedep-security.csv,aiohttp
+https://research.jfrog.com/post/,site-jfrog-research,state/jfrog-research.csv,aiohttp
