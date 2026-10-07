@@ -51,8 +51,11 @@ def checkout_orphan_branch(branch_name: str) -> None:
         # Branch exists locally, checkout it
         subprocess.run(['git', 'checkout', branch_name], check=True)
         subprocess.run(['git', 'reset', '--hard', 'HEAD'], check=True)
-    else:
-        # Check if branch exists remotely
+        return
+
+    # The remote lookup is production-only: develop runs never touch the
+    # network, so a missing local branch is created fresh as an orphan.
+    if pushes_enabled():
         remote_check = subprocess.run(
             ['git', 'ls-remote', '--heads', 'origin', branch_name],
             capture_output=True,
@@ -63,11 +66,11 @@ def checkout_orphan_branch(branch_name: str) -> None:
             # Branch exists remotely, checkout and pull
             subprocess.run(['git', 'checkout', branch_name], check=True)
             subprocess.run(['git', 'pull', 'origin', branch_name], check=True)
-        else:
-            # Branch doesn't exist, create orphan branch
-            subprocess.run(['git', 'checkout', '--orphan', branch_name], check=True)
-            # Clear the index to make it truly empty (may fail if index is already empty)
-            subprocess.run(['git', 'rm', '-rf', '.'], check=False)
+
+    # Branch doesn't exist (or develop mode), create orphan branch
+    subprocess.run(['git', 'checkout', '--orphan', branch_name], check=True)
+    # Clear the index to make it truly empty (may fail if index is already empty)
+    subprocess.run(['git', 'rm', '-rf', '.'], check=False)
 
 
 def push_branch(branch_name: str) -> None:
@@ -97,6 +100,12 @@ def checkout_main() -> None:
     # files that could conflict with the switch. Do not re-add a git clean
     # here: it would delete unrelated untracked files such as .env
     subprocess.run(['git', 'checkout', 'main'], check=True)
+
+    # Pull only in production. Develop runs never touch the network; a
+    # failed pull here would crash the run before state files are saved,
+    # losing the record of everything published in this run.
+    if not pushes_enabled():
+        return
 
     # Only pull if origin exists
     remote_check = subprocess.run(
