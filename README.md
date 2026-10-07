@@ -199,3 +199,8 @@ https://github.com/USERNAME/REPO/commits/site-cert-pl.atom
 6. **State CSV Naming:** Simple domain-based naming under `state/` (e.g., `state/cert-pl.csv` for seen URLs)
 7. **Browser Installation:** GitHub Actions uses CDP endpoint (no local Chromium); local testing requires `playwright install chromium`
 8. **Environment Modes:** `APP_ENV` gates push behavior; fail-fast if unset to prevent accidental publishes
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 only
+([LICENSE](LICENSE)).
