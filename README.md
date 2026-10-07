@@ -1,6 +1,8 @@
 # Website Monitor RSS Feed System
 
-A Python-based website monitoring system that scrapes articles and broadcasts them as RSS feeds using GitHub's native Atom feeds.
+Well, no chickens here, mate. Just a metaphor.
+
+This just some tricks for monitoring website by scraping articles and broadcasts them as RSS feeds using GitHub's native Atom feeds.
 
 ## Architecture
 
