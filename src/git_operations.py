@@ -66,6 +66,7 @@ def checkout_orphan_branch(branch_name: str) -> None:
             # Branch exists remotely, checkout and pull
             subprocess.run(['git', 'checkout', branch_name], check=True)
             subprocess.run(['git', 'pull', 'origin', branch_name], check=True)
+            return
 
     # Branch doesn't exist (or develop mode), create orphan branch
     subprocess.run(['git', 'checkout', '--orphan', branch_name], check=True)
