@@ -7,3 +7,4 @@ https://www.halcyon.ai/ransomware-research/reports,site-halcyon-reports,state/ha
 https://www.lasso.security/research,site-lasso-research,state/lasso-research.csv,aiohttp
 https://socket.dev/blog/category/security-news,site-socket-security-news,state/socket-security-news.csv,browser
 https://cure53.de/,site-cure53,state/cure53.csv,aiohttp
+https://claroty.com/team82/research,site-claroty-team82,state/claroty-team82.csv,aiohttp
