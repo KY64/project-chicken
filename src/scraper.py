@@ -127,14 +127,17 @@ class SiteScraper:
                     )
                     page_articles, next_page_url = self.site.extract(page.content(), page.url)
                     articles.extend(page_articles)
+                    print(f"    Page {len(fetched_urls)}: {len(page_articles)} articles")
 
                     # Pages are newest-first. Once a page overlaps saved state,
                     # we've reached previously published articles; keep this page
                     # for the caller to filter, but don't fetch older pages.
                     if seen_urls and any(url in seen_urls for _, url in page_articles):
+                        print(f"    Stopping: page {len(fetched_urls)} matches saved state")
                         break
 
                     if max_pages is not None and len(fetched_urls) >= max_pages:
+                        print(f"    Stopping: reached max_pages={max_pages}")
                         break
 
                     # Pace pages only when another fetch will actually happen.
@@ -169,14 +172,17 @@ class SiteScraper:
 
                 page_articles, next_page_url = self.site.extract(html, page_url)
                 articles.extend(page_articles)
+                print(f"    Page {len(fetched_urls)}: {len(page_articles)} articles")
 
                 # Pages are newest-first. Once a page overlaps saved state,
                 # we've reached previously published articles; keep this page
                 # for the caller to filter, but don't fetch older pages.
                 if seen_urls and any(url in seen_urls for _, url in page_articles):
+                    print(f"    Stopping: page {len(fetched_urls)} matches saved state")
                     break
 
                 if max_pages is not None and len(fetched_urls) >= max_pages:
+                    print(f"    Stopping: reached max_pages={max_pages}")
                     break
 
                 # Pace pages only when another fetch will actually happen.
