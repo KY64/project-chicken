@@ -157,10 +157,15 @@ independent of which browser backend is used.
 
 1. Load site configuration from `site.csv`
 2. For each site:
-   - Load seen URLs from its state CSV
+   - Return to `main` first, then load seen URLs from its state CSV
+     (publishing leaves HEAD on an orphan branch where state is not tracked;
+     loading there would read "no state" and republish everything)
    - Run site-specific scraper with retry logic
-   - For initial run (empty state CSV): scrape first 3 pages max
-   - For subsequent runs: scrape all pages
+   - For initial run (no state CSV yet): scrape first 3 pages max
+   - For subsequent runs: after each page, check its URLs against the saved
+     state — on the first page that overlaps, stop (articles are newest-first,
+     so older pages hold only already-published items); known URLs from that
+     page are filtered out before publishing
    - Filter articles against known URLs
    - For each new article:
      - Checkout/create orphan branch
@@ -201,6 +206,8 @@ https://github.com/USERNAME/REPO/commits/site-cert-pl.atom
 6. **State CSV Naming:** Simple domain-based naming under `state/` (e.g., `state/cert-pl.csv` for seen URLs)
 7. **Browser Installation:** GitHub Actions uses CDP endpoint (no local Chromium); local testing requires `playwright install chromium`
 8. **Environment Modes:** `APP_ENV` gates push behavior; fail-fast if unset to prevent accidental publishes
+9. **Seen-URL Cutoff:** pagination stops at the first page overlapping saved state (articles are newest-first), so each run fetches only as far back as needed; the overlapping page is kept and its known URLs filtered out before publishing
+10. **State Read From Main:** each site returns to `main` before loading its state CSV, because orphan branches do not track `state/` and would silently read "no state" and republish everything
 
 ## License
 
