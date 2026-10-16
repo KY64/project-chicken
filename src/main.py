@@ -59,9 +59,17 @@ def process_site(url: str, branch_name: str, state_csv: str, access_mode: str) -
     """
     print(f"Processing site: {url} (access_mode={access_mode})")
 
+    # State files are tracked on main, but publishing leaves the run on the
+    # site's orphan branch. Without returning first, every site after the
+    # first publisher reads an empty state file and republishes everything.
+    checkout_main()
+
     # Load seen URLs
     seen_urls = load_seen_urls(state_csv)
-    print(f"  Loaded {len(seen_urls)} seen URLs")
+    if seen_urls:
+        print(f"  Loaded {len(seen_urls)} seen URLs from {state_csv}")
+    else:
+        print(f"  No saved state in {state_csv}: initial run, capped at 3 pages")
 
     # Get scraper
     scraper = get_scraper_for_url(url, access_mode)
