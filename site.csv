@@ -11,3 +11,4 @@ https://claroty.com/team82/research,site-claroty-team82,state/claroty-team82.csv
 https://www.dragos.com/resources?q=&f3=00000198-c9c7-db65-adb8-c9df0cf50001&f4=00000198-5cb5-d319-abbc-debd71110001&s=0&f1=&f0=&f5=,site-dragos-resources,state/dragos-resources.csv,aiohttp
 https://www.txone.com/resources/white-papers/,site-txone-white-papers,state/txone-white-papers.csv,aiohttp
 https://www.nozominetworks.com/blog?tag=labs-research,site-nozomi-labs-research,state/nozomi-labs-research.csv,browser
+https://www.cloudflare.com/cloudforce-one/research/,site-cloudforce-one,state/cloudforce-one.csv,aiohttp
