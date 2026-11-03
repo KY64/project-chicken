@@ -10,7 +10,7 @@ The system monitors websites for new articles and publishes them as empty commit
 
 ### Key Components
 
-- **State Management:** CSV files track seen URLs; `site.csv` on `main` branch defines sites
+- **State Management:** CSV files track seen URLs — one row per URL, appended only when the URL is not already there; recorded on `main` right after each site publishes; `site.csv` on `main` branch defines sites
 - **RSS Generation:** Leverages GitHub's native Atom feeds from orphan branches
 - **Feed Items:** New articles published as empty commits (header = title, body = URL)
 - **Scraping:** Per-site access mode selects browser (JS enabled), browser (JS disabled), or direct `aiohttp`; browser modes use Browserless CDP in production and local Chromium for testing
@@ -56,7 +56,8 @@ project-chicken/
    playwright install chromium
    ```
 
-2. Run in develop mode (commits locally, no push):
+2. Run in develop mode (commits locally, no push — see
+   [Development vs production behavior](#development-vs-production-behavior)):
    ```bash
    APP_ENV=develop python src/main.py
    ```
@@ -116,6 +117,49 @@ container does not provide a Stealth route (it returns 404), so Cloudflare-
 protected `browser` feeds should use Browserless Stealth in production by
 setting `PLAYWRIGHT_CDP_ENDPOINT` to `/stealth` or `/chromium/stealth`.
 
+## Development vs production behavior
+
+`APP_ENV` decides whether the run publishes to GitHub or only on this machine.
+Everything else — scraping, filtering, per-site state recording, the 3-page
+initial-run cap — is identical in both modes.
+
+| Aspect | `develop` | `production` |
+| --- | --- | --- |
+| git network access | none: never pulls, never `ls-remote`s | pulls `main`, `ls-remote`s branches missing locally |
+| feed branch checkout | existing local branch is reused; otherwise a **new empty orphan** is created | branch missing locally but present on origin is checked out and pulled, keeping its remote history |
+| feed branch push | skipped | `git push --force origin <branch>` after every article commit |
+| state CSV | committed locally after each site | committed and pushed after each site |
+| `main` push | skipped | after each site, plus one final safety push |
+| browser modes | local Chromium unless `PLAYWRIGHT_CDP_ENDPOINT` is set | `PLAYWRIGHT_CDP_ENDPOINT` expected (no local Chromium on the runner) |
+| commit identity | `github-actions[bot]` unless `GIT_USER_NAME`/`GIT_USER_EMAIL` are set | same |
+
+### What that means when running `develop`
+
+1. **Publishing still rewrites the working tree.** Publishing checks out the
+   site's orphan branch and clears it, so uncommitted changes to *tracked*
+   files are reverted when the run returns to `main`. Untracked files such as
+   `.env` survive. Commit or stash before starting a run.
+2. **You push the results yourself**, and only what you choose:
+   ```bash
+   git push origin main site-<site-name>
+   ```
+   The feed branch is new locally, so the first push creates it on origin.
+3. **A develop-created orphan has no shared history with origin.** If a site's
+   branch already exists on GitHub, `develop` does not look it up (no network);
+   it creates a fresh orphan. Force-pushing that replaces the remote history
+   and the feed loses its earlier items. To keep remote history, fetch the
+   branch first so it exists locally before running:
+   ```bash
+   git fetch origin site-<site-name>
+   ```
+4. **Local `main` can be behind origin.** `develop` never pulls, so if the
+   scheduled run committed state since your clone, push with
+   `git pull --rebase origin main` first, otherwise the push is rejected.
+5. **Commit identity is the bot by default.** `configure_git()` writes the bot
+   identity into this repository's config unless `GIT_USER_NAME` and
+   `GIT_USER_EMAIL` are set, so local commits and state commits look like
+   automated ones.
+
 ## Configuration
 
 ### Adding a New Site
@@ -171,9 +215,13 @@ independent of which browser backend is used.
      - Checkout/create orphan branch
      - Create empty commit with title and URL
      - Push branch to origin (production only)
-   - Update state CSV with new URLs
-3. Switch back to main branch
-4. Commit and push updated state CSV files (production only)
+   - Return to `main`, record the newly published URLs in the state CSV, then
+     commit and push it (production only). This happens **per site**, not once
+     at the end: the feed commits are already pushed by this point, so a later
+     site failing — or the runner dying — must not leave them unrecorded, or
+     the next run republishes them onto the same branch.
+3. Switch back to `main` and push it once more as a safety net; pushing an
+   already-pushed `main` is a no-op.
 
 ## RSS Feed Access
 
@@ -192,6 +240,8 @@ https://github.com/USERNAME/REPO/commits/site-cert-pl.atom
 - `APP_ENV`: Environment mode, must be `develop` or `production` (required)
   - `develop`: commits locally only, does not push to origin
   - `production`: commits and pushes to origin
+  - See [Development vs production behavior](#development-vs-production-behavior)
+    for the full difference, including what `develop` does to the working tree
 - `PLAYWRIGHT_CDP_ENDPOINT`: Playwright CDP endpoint URL (required for production, optional for local testing)
 - `GIT_USER_NAME`: Git user name (optional, defaults to github-actions[bot])
 - `GIT_USER_EMAIL`: Git user email (optional, defaults to github-actions[bot] email)
@@ -207,7 +257,10 @@ https://github.com/USERNAME/REPO/commits/site-cert-pl.atom
 7. **Browser Installation:** GitHub Actions uses CDP endpoint (no local Chromium); local testing requires `playwright install chromium`
 8. **Environment Modes:** `APP_ENV` gates push behavior; fail-fast if unset to prevent accidental publishes
 9. **Seen-URL Cutoff:** pagination stops at the first page overlapping saved state (articles are newest-first), so each run fetches only as far back as needed; the overlapping page is kept and its known URLs filtered out before publishing
-10. **State Read From Main:** each site returns to `main` before loading its state CSV, because orphan branches do not track `state/` and would silently read "no state" and republish everything
+10. **State Reads And Writes On Main:** every state read and write happens with `main` checked out, because orphan branches do not track `state/` — reading there sees "no state" and writing there is discarded, and both regressions caused full republishes once
+11. **Per-Site State Recording:** new URLs are committed and pushed immediately after their site publishes, so a failure only ever loses the site in flight, never the whole run
+12. **Idempotent State Appends:** `save_new_urls` skips URLs already in the file, so a state file holds one row per URL and a divergence between branches and state cannot hide in duplicated rows
+13. **Serialized Runs:** the workflow's `concurrency` group allows one monitor run at a time; overlapping runs would read the same state and both publish and append the same articles
 
 ## License
 
