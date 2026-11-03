@@ -8,6 +8,14 @@ on:
 permissions:
   contents: write
 
+# One monitor run at a time. Two overlapping runs read the same state, publish
+# the same articles onto the same feed branches, and both append them to the
+# state file. Queue instead of cancelling: killing a run mid-flight leaves
+# published-but-unrecorded URLs, which is the other way state drifts.
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
 jobs:
   monitor:
     runs-on: ubuntu-latest
