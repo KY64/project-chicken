@@ -1,6 +1,5 @@
 import csv
 import os
-import subprocess
 import sys
 from typing import List, Tuple
 
@@ -11,7 +10,7 @@ from git_operations import (
     checkout_main,
     commit_changes,
     create_empty_commit,
-    pushes_enabled,
+    push_main,
     get_app_env
 )
 from state_manager import load_seen_urls, save_new_urls
@@ -54,8 +53,8 @@ def process_site(url: str, branch_name: str, state_csv: str, access_mode: str) -
         state_csv: Path to CSV file tracking seen URLs
 
     Returns:
-        URLs of newly published articles, to be persisted by the caller
-        once the run is back on the main branch
+        URLs of newly published articles. The caller records them in the
+        state CSV, which requires main to be checked out first.
     """
     print(f"Processing site: {url} (access_mode={access_mode})")
 
@@ -132,43 +131,47 @@ def main() -> None:
     sites = load_site_config(site_csv)
     print(f"Loaded {len(sites)} sites to monitor")
 
-    # Process each site
-    new_urls_by_state_csv = {}
+    # State files live on main. Every read and every write of a state CSV
+    # must happen with main checked out: on a site's orphan branch the file
+    # does not exist, so the read sees "no state" and the write is discarded
+    # when the run switches back. Both regressions shipped once (0782d27 read
+    # side, 407f11c write side) and both caused full republishes.
     for url, branch_name, state_csv, access_mode in sites:
         try:
             new_urls = process_site(url, branch_name, state_csv, access_mode)
         except Exception as e:
             print(f"Error processing site {url}: {e}")
             continue
-        if new_urls:
-            new_urls_by_state_csv.setdefault(state_csv, []).extend(new_urls)
+        if not new_urls:
+            continue
 
-    # Switch back to main
+        # Record as soon as this site is done. Publishing pushed commits to
+        # the feed branch already, so a failure in a later site (or a killed
+        # runner) must not leave these URLs unrecorded: the next run would
+        # republish them onto the same branch. Failures here are logged
+        # separately — the site itself succeeded — and the final push retries.
+        try:
+            checkout_main()
+            written = save_new_urls(state_csv, new_urls)
+            if not written:
+                print(f"  No new URLs to record for {branch_name}")
+                continue
+
+            print(f"  Recorded {written} new URLs in {state_csv}")
+            commit_changes(f"Update seen URLs ({branch_name})", [state_csv])
+            push_main()
+        except Exception as e:
+            print(f"Error recording state for {branch_name}: {e}")
+            continue
+
+    # Switch back to main; nothing is written off main, so the branch state
+    # here is just where the run ends.
     print("Switching back to main branch")
     checkout_main()
 
-    # Update state files now that the run is back on main, where they are tracked
-    for state_csv, new_urls in new_urls_by_state_csv.items():
-        print(f"Updating {state_csv} with {len(new_urls)} new URLs")
-        save_new_urls(state_csv, new_urls)
-
-    # Commit and push state changes
-    print("Committing state changes")
-    commit_changes("Update seen URLs", list(new_urls_by_state_csv))
-
-    # Push to origin if remote exists and APP_ENV=production
-    if pushes_enabled():
-        remote_check = subprocess.run(
-            ['git', 'remote', 'get-url', 'origin'],
-            capture_output=True,
-            text=True
-        )
-
-        if remote_check.returncode == 0:
-            print("Pushing to origin/main")
-            subprocess.run(['git', 'push', 'origin', 'main'], check=True)
-    else:
-        print("APP_ENV=develop: skipping push to origin")
+    # Safety net for a per-site push that lost a race or hit a transient
+    # error: the commit is local, so pushing again lands it. No-op otherwise.
+    push_main()
 
     print("Done!")
 

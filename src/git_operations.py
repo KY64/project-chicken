@@ -119,6 +119,32 @@ def checkout_main() -> None:
         subprocess.run(['git', 'pull', 'origin', 'main'], check=True)
 
 
+def push_main() -> None:
+    """Push main so newly recorded state is durable off this machine.
+
+    Called after each site's state commit and once more at the end of the run.
+    The final call is the safety net for a per-site push that lost a race or
+    hit a transient error: pushing an already-pushed main is a no-op.
+
+    No-op in develop mode and when origin is not configured.
+    """
+    if not pushes_enabled():
+        print("APP_ENV=develop: skipping push to origin")
+        return
+
+    remote_check = subprocess.run(
+        ['git', 'remote', 'get-url', 'origin'],
+        capture_output=True,
+        text=True
+    )
+
+    if remote_check.returncode != 0:
+        return
+
+    print("Pushing to origin/main")
+    subprocess.run(['git', 'push', 'origin', 'main'], check=True)
+
+
 def commit_changes(message: str, paths: List[str]) -> None:
     """
     Commit changes to the given files with the given message.
