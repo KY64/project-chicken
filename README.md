@@ -146,9 +146,11 @@ initial-run cap — is identical in both modes.
    The feed branch is new locally, so the first push creates it on origin.
 3. **A develop-created orphan has no shared history with origin.** If a site's
    branch already exists on GitHub, `develop` does not look it up (no network);
-   it creates a fresh orphan. Force-pushing that replaces the remote history
-   and the feed loses its earlier items. To keep remote history, fetch the
-   branch first so it exists locally before running:
+   it creates a fresh orphan. Force-pushing that replaces the remote history,
+   and the dropped entries do not come back: their URLs stay recorded in state,
+   so they are never republished (see
+   [State guarantees and limits](#state-guarantees-and-limits)). To keep remote
+   history, fetch the branch first so it exists locally before running:
    ```bash
    git fetch origin site-<site-name>
    ```
@@ -216,12 +218,44 @@ independent of which browser backend is used.
      - Create empty commit with title and URL
      - Push branch to origin (production only)
    - Return to `main`, record the newly published URLs in the state CSV, then
-     commit and push it (production only). This happens **per site**, not once
-     at the end: the feed commits are already pushed by this point, so a later
-     site failing — or the runner dying — must not leave them unrecorded, or
-     the next run republishes them onto the same branch.
+     commit and push it (production only) — **always before moving on to the
+     next site**, not once at the end: the feed commits are already pushed by
+     this point, so a later site failing, or the runner dying, must not leave
+     them unrecorded, or the next run republishes them onto the same branch.
+     If this commit or push fails it is logged separately (the site itself
+     succeeded) and the remaining sites still run.
 3. Switch back to `main` and push it once more as a safety net; pushing an
    already-pushed `main` is a no-op.
+
+## State guarantees and limits
+
+`state/*.csv` is the only input to the "already published?" decision. The
+pipeline never reads a feed branch's history to decide what to publish, and it
+keeps no state between runs — every run is a new process that reads these
+files back from `main`.
+
+What state guarantees:
+
+- A URL recorded in a state file is not published again, whatever happens to
+  its feed branch.
+- Appends are a union against the file, so a state file holds one row per URL.
+  A repeated append is a no-op and creates no commit.
+- Dedupe is **per file**. The same article can legitimately be recorded by two
+  sites (for example a post listed in both a malware and a security category),
+  and each feed publishes it once.
+
+What state does not guarantee:
+
+- **Losing or rolling back a state file makes those URLs look new again**, so
+  they get republished and the feed shows duplicates. This is why state is
+  committed and pushed after every site rather than once at the end.
+- **A feed branch does not heal itself.** If a branch is recreated (a fresh
+  orphan, or a force-push that replaces its history) it only shows items
+  published after that point: the older entries still exist in state, so they
+  are suppressed from republishing and never come back on their own.
+- **The feed reflects the upstream listing, not a backfill.** If an upstream
+  page still lists an article whose URL is already in state, the run finds zero
+  new articles for that site — which is the expected result, not a failure.
 
 ## RSS Feed Access
 
@@ -258,9 +292,10 @@ https://github.com/USERNAME/REPO/commits/site-cert-pl.atom
 8. **Environment Modes:** `APP_ENV` gates push behavior; fail-fast if unset to prevent accidental publishes
 9. **Seen-URL Cutoff:** pagination stops at the first page overlapping saved state (articles are newest-first), so each run fetches only as far back as needed; the overlapping page is kept and its known URLs filtered out before publishing
 10. **State Reads And Writes On Main:** every state read and write happens with `main` checked out, because orphan branches do not track `state/` — reading there sees "no state" and writing there is discarded, and both regressions caused full republishes once
-11. **Per-Site State Recording:** new URLs are committed and pushed immediately after their site publishes, so a failure only ever loses the site in flight, never the whole run
+11. **Per-Site State Recording:** new URLs are committed and pushed immediately after their site publishes, always before the next site starts, so a failure only ever loses the site in flight, never the whole run
 12. **Idempotent State Appends:** `save_new_urls` skips URLs already in the file, so a state file holds one row per URL and a divergence between branches and state cannot hide in duplicated rows
 13. **Serialized Runs:** the workflow's `concurrency` group allows one monitor run at a time; overlapping runs would read the same state and both publish and append the same articles
+14. **State Is Authoritative:** no run consults feed-branch history to decide what was published, so the CSV files stay the single source of truth; the cost is that a recreated branch shows only items published after it existed (see [State guarantees and limits](#state-guarantees-and-limits))
 
 ## License
 
